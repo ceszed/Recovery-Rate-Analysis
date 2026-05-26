@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recovery Rate Analysis</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c10;--bg2:#11141a;--bg3:#181c24;--bg4:#1e2330;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+  --text:#e8ecf4;--text2:#8892a4;--text3:#525d6e;
+  --accent:#3b82f6;
+  --green:#22c55e;--green-dim:rgba(34,197,94,0.12);
+  --red:#ef4444;--red-dim:rgba(239,68,68,0.12);
+  --amber:#f59e0b;--amber-dim:rgba(245,158,11,0.12);
+  --blue:#3b82f6;--blue-dim:rgba(59,130,246,0.12);
+  --pink:#ec4899;--pink-dim:rgba(236,72,153,0.12);
+  --teal:#14b8a6;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-size:14px;line-height:1.6;min-height:100vh}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(59,130,246,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+.wrap{max-width:1280px;margin:0 auto;padding:0 24px 60px;position:relative;z-index:1}
+
+/* header */
+.hdr{padding:40px 0 28px;border-bottom:1px solid var(--border);margin-bottom:28px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+.eyebrow{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.15em;color:var(--accent);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
+h1 span{color:var(--accent)}
+.hdr-sub{margin-top:5px;font-size:13px;color:var(--text2);font-weight:300}
+.ver{font-family:'DM Mono',monospace;font-size:10px;padding:4px 10px;border:1px solid var(--border2);border-radius:4px;color:var(--text3);white-space:nowrap}
+
+/* upload */
+.drop{border:1.5px dashed var(--border2);border-radius:12px;padding:40px 32px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg2);position:relative;overflow:hidden;margin-bottom:14px}
+.drop::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(59,130,246,0.06) 0%,transparent 70%);pointer-events:none}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--bg3)}
+.drop-icon{width:44px;height:44px;margin:0 auto 14px;border:1px solid var(--border2);border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--bg3)}
+.drop-icon svg{width:20px;height:20px;stroke:var(--accent);fill:none;stroke-width:1.5}
+.drop h3{font-size:15px;font-weight:500;margin-bottom:5px}
+.drop p{font-size:12px;color:var(--text2);font-weight:300}
+.drop p strong{color:var(--text);font-weight:500}
+.ftypes{display:flex;justify-content:center;gap:8px;margin-top:14px}
+.ftype{font-family:'DM Mono',monospace;font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;color:var(--text3)}
+#fi{display:none}
+.loaded{display:none;padding:10px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;align-items:center;gap:10px;font-size:12px;margin-bottom:28px}
+.loaded.on{display:flex}
+.ldot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
+.lname{color:var(--text);font-weight:500}
+.lmeta{color:var(--text2);margin-left:auto;font-family:'DM Mono',monospace;font-size:11px}
+
+/* error */
+.err-box{display:none;padding:14px 18px;background:var(--red-dim);border:1px solid var(--red);border-radius:8px;color:var(--red);font-size:13px;margin-bottom:20px;font-family:'DM Mono',monospace}
+.err-box.on{display:block}
+
+/* results */
+#results{display:none}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* section label */
+.slabel{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.12em;color:var(--text3);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:10px}
+.slabel::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* metrics */
+.mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px}
+.mc{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px 18px;position:relative;overflow:hidden}
+.mc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:10px 10px 0 0}
+.mc.bl::before{background:var(--accent)}
+.mc.gr::before{background:var(--green)}
+.mc.am::before{background:var(--amber)}
+.mc.tl::before{background:var(--teal)}
+.mlbl{font-size:11px;color:var(--text2);margin-bottom:6px;font-family:'DM Mono',monospace;letter-spacing:.04em}
+.mval{font-size:20px;font-weight:600;letter-spacing:-.02em;line-height:1;font-family:'DM Mono',monospace}
+.msub{margin-top:4px;font-size:11px;color:var(--text3)}
+
+/* chart card */
+.ccard{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:28px}
+.ctitle{font-size:12px;font-weight:500;color:var(--text2);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.ctitle i{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+
+/* filter bar */
+.fbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.fbar input,.fbar select{background:var(--bg2);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-family:'Sora',sans-serif;font-size:12px;padding:7px 12px;outline:none;transition:border-color .15s}
+.fbar input:focus,.fbar select:focus{border-color:var(--accent)}
+.fbar input{width:180px}
+.fbar select{min-width:160px}
+.fbar label{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace}
+.fcnt{margin-left:auto;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)}
+
+/* table */
+.twrap{border:1px solid var(--border);border-radius:10px;overflow:hidden;overflow-x:auto;max-height:640px;overflow-y:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:900px}
+thead{position:sticky;top:0;z-index:2}
+thead th{background:var(--bg3);padding:10px 13px;text-align:right;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.05em;color:var(--text3);text-transform:uppercase;font-weight:400;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:bottom;line-height:1.4}
+thead th:first-child{text-align:left}
+.thsub{display:block;font-size:9px;color:var(--text3);font-weight:400;letter-spacing:.02em;text-transform:none;margin-top:2px;opacity:.7}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--bg3)}
+tbody tr.tot{background:var(--bg3);border-top:1px solid var(--border2)}
+tbody tr.tot:hover{background:var(--bg4)}
+td{padding:11px 13px;color:var(--text);vertical-align:middle;white-space:nowrap;text-align:right}
+td:first-child{text-align:left}
+
+/* badges */
+.badge{display:inline-flex;align-items:center;justify-content:center;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:500;font-family:'DM Mono',monospace;min-width:36px}
+.bp{background:var(--green-dim);color:var(--green)}
+.bd{background:var(--red-dim);color:var(--red)}
+.bm{background:var(--amber-dim);color:var(--amber)}
+.bl2{background:var(--blue-dim);color:var(--blue)}
+.bs{background:var(--pink-dim);color:var(--pink)}
+.bn{color:var(--text3);font-size:12px}
+
+/* date cell */
+.dcell{display:flex;flex-direction:column;gap:1px}
+.dmain{font-family:'DM Mono',monospace;font-size:12px;font-weight:500}
+.dsub{font-size:10px;color:var(--text3)}
+
+/* amount / ratio */
+.amt{font-family:'DM Mono',monospace;font-size:12px}
+.tot-val{font-family:'DM Mono',monospace;font-size:12px;font-weight:500}
+.rcell{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.rbar{width:52px;height:4px;background:rgba(255,255,255,0.07);border-radius:2px;flex-shrink:0;overflow:hidden}
+.rfill{height:100%;border-radius:2px}
+.fg{background:var(--green)}
+.fb{background:var(--blue)}
+.rval{font-family:'DM Mono',monospace;font-size:11px;min-width:44px;text-align:right}
+.rh{color:var(--green)}
+.rm{color:var(--amber)}
+.rl{color:var(--red)}
+.rn{color:var(--text3)}
+
+/* footer */
+.foot{margin-top:40px;padding-top:20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:11px;color:var(--text3)}
+.foot span:first-child{font-family:'DM Mono',monospace;font-size:10px}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hdr">
+    <div>
+      <p class="eyebrow">Collections Intelligence</p>
+      <h1>Recovery Rate <span>Analysis</span></h1>
+      <p class="hdr-sub">Per-cohort recovery ratios by delinquent date</p>
+    </div>
+    <div class="ver">v4.0 · Zed Collections</div>
+  </header>
+
+  <div class="drop" id="drop" onclick="document.getElementById('fi').click()">
+    <div class="drop-icon">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+    </div>
+    <h3>Upload collections file</h3>
+    <p>Drag & drop or <strong>click to browse</strong></p>
+    <div class="ftypes"><span class="ftype">.xlsx</span><span class="ftype">.xls</span></div>
+  </div>
+  <input type="file" id="fi" accept=".xlsx,.xls">
+
+  <div class="loaded" id="loaded">
+    <div class="ldot"></div>
+    <span class="lname" id="lname"></span>
+    <span class="lmeta" id="lmeta"></span>
+  </div>
+
+  <div class="err-box" id="errBox"></div>
+
+  <div id="results">
+    <p class="slabel">Summary</p>
+    <div class="mgrid" id="metrics"></div>
+
+    <p class="slabel">Count ratio trend by delinquent date</p>
+    <div class="ccard">
+      <div class="ctitle"><i style="background:var(--green)"></i>Paid ÷ total accounts — count ratio per cohort</div>
+      <div style="position:relative;height:220px"><canvas id="lineChart"></canvas></div>
+    </div>
+
+    <p class="slabel">Per cohort detail</p>
+    <div class="fbar">
+      <label>Filter</label>
+      <input type="text" id="fsearch" placeholder="e.g. 2026-04" oninput="render()">
+      <label>Sort</label>
+      <select id="fsort" onchange="render()">
+        <option value="date-asc">Date ↑ oldest first</option>
+        <option value="date-desc">Date ↓ newest first</option>
+        <option value="cnt-desc">Total accounts ↓</option>
+        <option value="cr-desc">Count ratio ↓</option>
+        <option value="ar-desc">Balance ratio ↓</option>
+      </select>
+      <span class="fcnt" id="fcnt"></span>
+    </div>
+
+    <div class="twrap">
+      <table>
+        <thead><tr>
+          <th>Delinquent date</th>
+          <th>Paid</th>
+          <th>Delinquent</th>
+          <th>Demand letters</th>
+          <th>Payment plans</th>
+          <th>Small claims</th>
+          <th>Total accts</th>
+          <th>Total balance<span class="thsub">excl. paid</span></th>
+          <th>Count ratio<span class="thsub">paid ÷ total accts</span></th>
+          <th>Balance ratio<span class="thsub">paid amt ÷ total bal</span></th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer class="foot">
+    <span>COLLECTIONS · RECOVERY RATE ANALYSIS</span>
+    <span>Data processed client-side — no uploads to any server</span>
+  </footer>
+</div>
+
+<script>
+const STATUSES = ['Paid','Delinquent','Demand Letters','Payment Plans','Small Claims'];
+const BC       = {'Paid':'bp','Delinquent':'bd','Demand Letters':'bm','Payment Plans':'bl2','Small Claims':'bs'};
+let cohortRows = [], chart = null;
+
+/* ── drag & drop ── */
+const drop = document.getElementById('drop');
+drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); load(e.dataTransfer.files[0]); });
+document.getElementById('fi').onchange = e => load(e.target.files[0]);
+
+function showErr(msg) {
+  const b = document.getElementById('errBox');
+  b.textContent = 'Error: ' + msg;
+  b.classList.add('on');
+}
+
+/* ── load file ── */
+function load(file) {
+  if (!file) return;
+  document.getElementById('errBox').classList.remove('on');
+  const reader = new FileReader();
+  reader.onerror = () => showErr('Could not read file.');
+  reader.onload  = e => {
+    try {
+      parse(e.target.result, file.name);
+    } catch(err) {
+      showErr(err.message);
+      console.error(err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ── bucket from days ── */
+function bucket(d) {
+  d = parseFloat(d);
+  if (isNaN(d)) return '';
+  if (d <  30) return '1-30 Days';
+  if (d <  60) return '31-60 Days';
+  if (d <  89) return '61-89 Days';
+  if (d < 120) return '90-120 Days';
+  if (d < 150) return '121-150 Days';
+  if (d < 180) return '151-180 Days';
+  return 'Above 180 Days';
+}
+
+/* ── parse xlsx ── */
+function parse(buf, fname) {
+  // cellDates:true → XLSX.js returns JS Date objects for date-formatted cells
+  const wb = XLSX.read(buf, { type:'array', cellDates:true });
+
+  // Find the right sheet: first one with a "Delinquent Days" column
+  let dataRows = null, sheetName = '';
+  for (const sn of wb.SheetNames) {
+    const ws = wb.Sheets[sn];
+    if (!ws['!ref']) continue;
+
+    // sheet_to_json with header:1 → arrays, resolves shared strings automatically
+    const raw = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
+    if (!raw || raw.length < 2) continue;
+
+    // Find columns from header row
+    const hdr = (raw[0] || []).map(v => v == null ? '' : String(v).trim());
+    let daysC=-1, statusC=-1, amtC=-1, dateC=-1, bucketCount=0;
+    hdr.forEach((h,i) => {
+      if (h === 'Delinquent Days')  daysC   = i;
+      if (h === 'Delinquent Date')  dateC   = i;
+      if (h.startsWith('Delinquent Amount')) amtC = i;
+      if (h === 'Delinquency Buckets') { bucketCount++; if (bucketCount===2) statusC=i; }
+    });
+    // Hard fallbacks for this file layout
+    if (daysC   < 0) daysC   = 8;
+    if (statusC < 0) statusC = 10;
+    if (amtC    < 0) amtC    = 7;
+    if (dateC   < 0) dateC   = 6;
+
+    const found = [];
+    for (let i=1; i<raw.length; i++) {
+      const row = raw[i];
+      if (!row) continue;
+      const b = bucket(row[daysC]);
+      if (!b) continue;
+      const st = row[statusC] == null ? '' : String(row[statusC]).trim();
+      if (!st || !STATUSES.includes(st)) continue;
+      const amt  = parseFloat(row[amtC])  || 0;
+      const rd   = row[dateC];
+      let ds = '';
+      if (rd instanceof Date) {
+        // timezone-safe ISO date
+        ds = new Date(rd.getTime() - rd.getTimezoneOffset()*60000).toISOString().slice(0,10);
+      } else if (typeof rd === 'number' && rd > 0) {
+        ds = new Date(Math.round((rd-25569)*86400*1000)).toISOString().slice(0,10);
+      } else if (rd) {
+        ds = String(rd).slice(0,10);
+      }
+      found.push({ bucket:b, status:st, amt, date:ds });
+    }
+
+    if (found.length > 0) { dataRows = found; sheetName = sn; break; }
+  }
+
+  if (!dataRows || dataRows.length === 0) {
+    throw new Error('No valid delinquency rows found. Check the file has Delinquent Days and status columns.');
+  }
+
+  // Update loaded bar
+  document.getElementById('lname').textContent = fname;
+  document.getElementById('lmeta').textContent = dataRows.length + ' records · ' + sheetName;
+  document.getElementById('loaded').classList.add('on');
+
+  // Show results FIRST so canvases have real pixel dimensions
+  const res = document.getElementById('results');
+  res.style.display = 'block';
+  res.style.animation = 'fadeUp .35s ease';
+
+  // Build cohorts and render — canvas is visible now
+  buildCohorts(dataRows);
+  fillMetrics();
+  drawChart();
+  render();
+}
+
+/* ── build cohort data ── */
+function buildCohorts(rows) {
+  const byDate = {};
+  rows.forEach(r => {
+    const key = r.date || 'Unknown';
+    if (!byDate[key]) {
+      byDate[key] = { date: key };
+      STATUSES.forEach(s => { byDate[key][s] = { n:0, amt:0 }; });
+    }
+    byDate[key][r.status].n++;
+    byDate[key][r.status].amt += r.amt;
+  });
+
+  cohortRows = Object.values(byDate).map(d => {
+    const totalN   = STATUSES.reduce((a,s) => a + d[s].n, 0);
+    const totalBal = STATUSES.reduce((a,s) => a + d[s].amt, 0);        // whole cohort balance
+    const nonPaidBal = STATUSES.filter(s=>s!=='Paid').reduce((a,s) => a + d[s].amt, 0);
+    const paidN    = d['Paid'].n;
+    const paidAmt  = d['Paid'].amt;
+    const cntRatio = totalN > 0  ? (paidN   / totalN)   * 100 : null;
+    const balRatio = totalBal !== 0 ? (paidAmt / totalBal) * 100 : null;
+    return { date:d.date, d, totalN, nonPaidBal, totalBal, paidN, paidAmt, cntRatio, balRatio };
+  }).sort((a,b) => a.date.localeCompare(b.date));
+}
+
+/* ── metrics ── */
+function fillMetrics() {
+  const gN    = cohortRows.reduce((a,r)=>a+r.totalN,0);
+  const gNPB  = cohortRows.reduce((a,r)=>a+r.nonPaidBal,0);
+  const gPN   = cohortRows.reduce((a,r)=>a+r.paidN,0);
+  const gPA   = cohortRows.reduce((a,r)=>a+r.paidAmt,0);
+  const gTB   = cohortRows.reduce((a,r)=>a+r.totalBal,0);
+  const oCR   = gN  > 0  ? gPN / gN  * 100 : 0;
+  const oAR   = gTB !== 0 ? gPA / gTB * 100 : 0;
+  document.getElementById('metrics').innerHTML = `
+    <div class="mc bl"><div class="mlbl">Cohort dates</div><div class="mval">${cohortRows.length}</div><div class="msub">${gN.toLocaleString()} total accounts</div></div>
+    <div class="mc tl"><div class="mlbl">Balance excl. paid</div><div class="mval" style="font-size:15px">${php(gNPB)}</div><div class="msub">Paid amt: ${php(gPA)}</div></div>
+    <div class="mc gr"><div class="mlbl">Count ratio overall</div><div class="mval" style="color:var(--green)">${pct(oCR)}</div><div class="msub">Paid ${gPN.toLocaleString()} ÷ total ${gN.toLocaleString()}</div></div>
+    <div class="mc am"><div class="mlbl">Balance ratio overall</div><div class="mval" style="color:var(--blue)">${pct(oAR)}</div><div class="msub">Paid amt ÷ whole cohort bal</div></div>`;
+}
+
+/* ── line chart ── */
+function drawChart() {
+  if (chart) { chart.destroy(); chart = null; }
+  const pts  = cohortRows.filter(r => r.totalN >= 5 && r.cntRatio !== null);
+  const lbls = pts.map(r => r.date.slice(5));   // MM-DD
+  const vals = pts.map(r => +r.cntRatio.toFixed(1));
+  chart = new Chart(document.getElementById('lineChart'), {
+    type:'line',
+    data:{ labels:lbls, datasets:[{
+      data:vals, borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,0.07)',
+      borderWidth:2, pointRadius:3, tension:0.3, fill:true,
+      pointBackgroundColor: vals.map(v => v>=75?'#22c55e':v>=40?'#f59e0b':'#ef4444')
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{ label:c=>c.raw+'%', title:t=>'Date: '+pts[t[0].dataIndex].date }}},
+      scales:{
+        x:{ ticks:{color:'#525d6e',font:{family:'DM Mono',size:9},maxTicksLimit:22,maxRotation:45}, grid:{color:'rgba(255,255,255,0.05)'}},
+        y:{ min:0, ticks:{color:'#525d6e',font:{family:'DM Mono',size:10},callback:v=>v+'%'}, grid:{color:'rgba(255,255,255,0.05)'}}
+      }
+    }
+  });
+}
+
+/* ── table render ── */
+function render() {
+  const q = (document.getElementById('fsearch').value||'').toLowerCase();
+  const s = document.getElementById('fsort').value;
+  let rows = cohortRows.filter(r => r.date.toLowerCase().includes(q));
+  rows.sort((a,b) => {
+    if (s==='date-asc')  return a.date.localeCompare(b.date);
+    if (s==='date-desc') return b.date.localeCompare(a.date);
+    if (s==='cnt-desc')  return b.totalN - a.totalN;
+    if (s==='cr-desc')   return (b.cntRatio??-Infinity)-(a.cntRatio??-Infinity);
+    if (s==='ar-desc')   return (b.balRatio??-Infinity)-(a.balRatio??-Infinity);
+    return 0;
+  });
+  document.getElementById('fcnt').textContent = rows.length+' / '+cohortRows.length+' dates';
+
+  const maxCR = Math.max(...rows.map(r=>r.cntRatio??0), 1);
+  const maxAR = Math.max(...rows.map(r=>Math.abs(r.balRatio??0)), 1);
+
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+
+  rows.forEach(r => {
+    const cW = r.cntRatio!=null ? Math.min(r.cntRatio/maxCR*100,100) : 0;
+    const aW = r.balRatio!=null ? Math.min(Math.abs(r.balRatio)/maxAR*100,100) : 0;
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td><div class="dcell"><span class="dmain">${r.date}</span><span class="dsub">${r.totalN} accounts</span></div></td>`+
+      STATUSES.map(st => {
+        const n = r.d[st].n;
+        return `<td>${n>0?`<span class="badge ${BC[st]}">${n.toLocaleString()}</span>`:'<span class="bn">—</span>'}</td>`;
+      }).join('')+
+      `<td class="tot-val">${r.totalN.toLocaleString()}</td>`+
+      `<td class="amt">${php(r.nonPaidBal)}</td>`+
+      `<td><div class="rcell"><div class="rbar"><div class="rfill fg" style="width:${cW}%"></div></div><span class="rval ${rc(r.cntRatio)}">${r.cntRatio!=null?pct(r.cntRatio):'—'}</span></div></td>`+
+      `<td><div class="rcell"><div class="rbar"><div class="rfill fb" style="width:${aW}%"></div></div><span class="rval ${rc(r.balRatio)}">${r.balRatio!=null?pct(r.balRatio):'—'}</span></div></td>`;
+    tbody.appendChild(tr);
+  });
+
+  // Totals row
+  const tN  = rows.reduce((a,r)=>a+r.totalN,0);
+  const tNB = rows.reduce((a,r)=>a+r.nonPaidBal,0);
+  const tPN = rows.reduce((a,r)=>a+r.paidN,0);
+  const tPA = rows.reduce((a,r)=>a+r.paidAmt,0);
+  const tTB = rows.reduce((a,r)=>a+r.totalBal,0);
+  const tCR = tN>0?tPN/tN*100:0, tAR = tTB!==0?tPA/tTB*100:0;
+  const tot = document.createElement('tr'); tot.className='tot';
+  tot.innerHTML =
+    `<td><span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:600;color:var(--text2)">TOTAL (${rows.length} dates)</span></td>`+
+    STATUSES.map(st=>`<td class="tot-val">${rows.reduce((a,r)=>a+r.d[st].n,0).toLocaleString()}</td>`).join('')+
+    `<td class="tot-val">${tN.toLocaleString()}</td>`+
+    `<td class="amt">${php(tNB)}</td>`+
+    `<td><div class="rcell"><span class="rval ${rc(tCR)}">${pct(tCR)}</span></div></td>`+
+    `<td><div class="rcell"><span class="rval ${rc(tAR)}">${pct(tAR)}</span></div></td>`;
+  tbody.appendChild(tot);
+}
+
+/* ── helpers ── */
+function php(n){ return '₱'+Math.abs(n).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+function pct(n){ return isFinite(n)?n.toFixed(1)+'%':'—'; }
+function rc(v){
+  if (!isFinite(v)||v===null) return 'rn';
+  if (v>=75) return 'rh';
+  if (v>=40) return 'rm';
+  return 'rl';
+}
+</script>
+</body>
+</html>
