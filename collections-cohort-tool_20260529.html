@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recovery Rate Analysis</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c10;--bg2:#11141a;--bg3:#181c24;--bg4:#1e2330;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+  --text:#e8ecf4;--text2:#8892a4;--text3:#525d6e;
+  --accent:#3b82f6;
+  --green:#22c55e;--green-dim:rgba(34,197,94,0.12);
+  --red:#ef4444;--red-dim:rgba(239,68,68,0.12);
+  --amber:#f59e0b;--amber-dim:rgba(245,158,11,0.12);
+  --blue:#3b82f6;--blue-dim:rgba(59,130,246,0.12);
+  --pink:#ec4899;--pink-dim:rgba(236,72,153,0.12);
+  --teal:#14b8a6;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-size:14px;line-height:1.6;min-height:100vh}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(59,130,246,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+.wrap{max-width:1280px;margin:0 auto;padding:0 24px 60px;position:relative;z-index:1}
+
+/* ── header ── */
+.hdr{padding:40px 0 28px;border-bottom:1px solid var(--border);margin-bottom:32px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+.eyebrow{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.15em;color:var(--accent);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
+h1 span{color:var(--accent)}
+.hdr-sub{margin-top:5px;font-size:13px;color:var(--text2);font-weight:300}
+.ver{font-family:'DM Mono',monospace;font-size:10px;padding:4px 10px;border:1px solid var(--border2);border-radius:4px;color:var(--text3);white-space:nowrap}
+
+/* ── upload grid ── */
+.upload-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
+.upload-slot{}
+.upload-slot-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.req-badge{font-size:9px;padding:2px 6px;border-radius:3px;font-weight:500;letter-spacing:.04em}
+.req-pending{background:rgba(239,68,68,0.15);color:var(--red);border:1px solid rgba(239,68,68,0.3)}
+.req-done{background:rgba(34,197,94,0.15);color:var(--green);border:1px solid rgba(34,197,94,0.3)}
+.drop{border:1.5px dashed var(--border2);border-radius:10px;padding:24px 16px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg2);position:relative;overflow:hidden}
+.drop::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(59,130,246,0.05) 0%,transparent 70%);pointer-events:none}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--bg3)}
+.drop.done{border-color:rgba(34,197,94,0.4);border-style:solid}
+.drop.done::before{background:radial-gradient(ellipse at 50% 0%,rgba(34,197,94,0.05) 0%,transparent 70%)}
+.drop-icon{width:36px;height:36px;margin:0 auto 10px;border:1px solid var(--border2);border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--bg3);transition:all .2s}
+.drop.done .drop-icon{border-color:rgba(34,197,94,0.4);background:rgba(34,197,94,0.08)}
+.drop-icon svg{width:16px;height:16px;stroke:var(--accent);fill:none;stroke-width:1.5}
+.drop.done .drop-icon svg{stroke:var(--green)}
+.drop h3{font-size:12px;font-weight:500;margin-bottom:4px;color:var(--text)}
+.drop p{font-size:11px;color:var(--text2);font-weight:300}
+.drop p strong{color:var(--text);font-weight:500}
+.ftypes{display:flex;justify-content:center;gap:6px;margin-top:10px}
+.ftype{font-family:'DM Mono',monospace;font-size:9px;padding:2px 7px;border:1px solid var(--border);border-radius:3px;color:var(--text3)}
+.drop input[type=file]{display:none}
+
+/* file status bar */
+.file-status-bar{background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:20px}
+.file-status-row{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border)}
+.file-status-row:last-child{border-bottom:none}
+.fs-num{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);width:16px;flex-shrink:0}
+.fs-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:background .2s}
+.fs-dot.pending{background:rgba(255,255,255,0.15)}
+.fs-dot.loaded{background:var(--green)}
+.fs-label{font-size:12px;color:var(--text2);font-weight:400;flex:0 0 220px}
+.fs-filename{font-size:12px;font-weight:500;color:var(--text);flex:1;font-family:'DM Mono',monospace;font-size:11px}
+.fs-meta{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);margin-left:auto;white-space:nowrap}
+.fs-pending-text{font-size:11px;color:var(--text3);font-style:italic;flex:1}
+
+/* progress indicator */
+.upload-progress{margin-bottom:20px;display:none}
+.upload-progress.show{display:block}
+.progress-track{height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.progress-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--green));transition:width .4s ease}
+.progress-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);margin-top:6px;text-align:center}
+
+/* error */
+.err-box{display:none;padding:12px 16px;background:var(--red-dim);border:1px solid var(--red);border-radius:8px;color:var(--red);font-size:12px;margin-bottom:16px;font-family:'DM Mono',monospace}
+.err-box.on{display:block}
+
+/* results */
+#results{display:none}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* tabs */
+.tabs{display:flex;gap:0;margin-bottom:28px;border-bottom:1px solid var(--border)}
+.tab-btn{background:none;border:none;border-bottom:2px solid transparent;color:var(--text2);cursor:pointer;font-family:'Sora',sans-serif;font-size:13px;font-weight:400;padding:10px 22px;margin-bottom:-1px;transition:all .15s;white-space:nowrap}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:500}
+.tab-panel{display:none}
+.tab-panel.active{display:block;animation:fadeUp .3s ease}
+
+/* section label */
+.slabel{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.12em;color:var(--text3);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:10px}
+.slabel::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* metrics */
+.mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px}
+.mc{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px 18px;position:relative;overflow:hidden}
+.mc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:10px 10px 0 0}
+.mc.bl::before{background:var(--accent)}
+.mc.gr::before{background:var(--green)}
+.mc.am::before{background:var(--amber)}
+.mc.tl::before{background:var(--teal)}
+.mlbl{font-size:11px;color:var(--text2);margin-bottom:6px;font-family:'DM Mono',monospace;letter-spacing:.04em}
+.mval{font-size:20px;font-weight:600;letter-spacing:-.02em;line-height:1;font-family:'DM Mono',monospace}
+.msub{margin-top:4px;font-size:11px;color:var(--text3)}
+
+/* chart card */
+.ccard{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:28px}
+.ctitle{font-size:12px;font-weight:500;color:var(--text2);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.ctitle i{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+
+/* filter bar */
+.fbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.fbar input,.fbar select{background:var(--bg2);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-family:'Sora',sans-serif;font-size:12px;padding:7px 12px;outline:none;transition:border-color .15s}
+.fbar input:focus,.fbar select:focus{border-color:var(--accent)}
+.fbar input{width:180px}
+.fbar select{min-width:160px}
+.fbar label{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace}
+.fcnt{margin-left:auto;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)}
+
+/* table */
+.twrap{border:1px solid var(--border);border-radius:10px;overflow:hidden;overflow-x:auto;max-height:640px;overflow-y:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:900px}
+thead{position:sticky;top:0;z-index:2}
+thead th{background:var(--bg3);padding:10px 13px;text-align:right;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.05em;color:var(--text3);text-transform:uppercase;font-weight:400;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:bottom;line-height:1.4}
+thead th:first-child{text-align:left}
+.thsub{display:block;font-size:9px;color:var(--text3);font-weight:400;letter-spacing:.02em;text-transform:none;margin-top:2px;opacity:.7}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--bg3)}
+tbody tr.tot{background:var(--bg3);border-top:1px solid var(--border2)}
+tbody tr.tot:hover{background:var(--bg4)}
+td{padding:11px 13px;color:var(--text);vertical-align:middle;white-space:nowrap;text-align:right}
+td:first-child{text-align:left}
+
+/* badges */
+.badge{display:inline-flex;align-items:center;justify-content:center;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:500;font-family:'DM Mono',monospace;min-width:36px}
+.bp{background:var(--green-dim);color:var(--green)}
+.bd{background:var(--red-dim);color:var(--red)}
+.bm{background:var(--amber-dim);color:var(--amber)}
+.bl2{background:var(--blue-dim);color:var(--blue)}
+.bs{background:var(--pink-dim);color:var(--pink)}
+.bn{color:var(--text3);font-size:12px}
+
+/* date / amount */
+.dcell{display:flex;flex-direction:column;gap:1px}
+.dmain{font-family:'DM Mono',monospace;font-size:12px;font-weight:500}
+.dsub{font-size:10px;color:var(--text3)}
+.amt{font-family:'DM Mono',monospace;font-size:12px}
+.tot-val{font-family:'DM Mono',monospace;font-size:12px;font-weight:500}
+.rcell{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.rbar{width:52px;height:4px;background:rgba(255,255,255,0.07);border-radius:2px;flex-shrink:0;overflow:hidden}
+.rfill{height:100%;border-radius:2px}
+.fg{background:var(--green)}
+.fb{background:var(--blue)}
+.rval{font-family:'DM Mono',monospace;font-size:11px;min-width:44px;text-align:right}
+.rh{color:var(--green)}
+.rm{color:var(--amber)}
+.rl{color:var(--red)}
+.rn{color:var(--text3)}
+
+/* latest status badges */
+.ls{padding:3px 9px;border-radius:5px;font-size:11px;font-weight:500;font-family:'DM Mono',monospace;display:inline-flex;align-items:center;gap:4px}
+.ls-pd{background:var(--red-dim);color:var(--red)}
+.ls-res{background:var(--green-dim);color:var(--green)}
+.ls-cur{background:var(--blue-dim);color:var(--blue)}
+
+/* download */
+.dl-bar{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.dl-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 18px;border-radius:8px;font-family:'Sora',sans-serif;font-size:12px;font-weight:500;cursor:pointer;border:1px solid;transition:all .15s;background:none}
+.dl-red{border-color:rgba(239,68,68,0.4);color:#ef4444}
+.dl-red:hover{background:rgba(239,68,68,0.1);border-color:#ef4444}
+.dl-blue{border-color:rgba(59,130,246,0.4);color:#3b82f6}
+.dl-blue:hover{background:rgba(59,130,246,0.1);border-color:#3b82f6}
+.dl-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0}
+
+/* fpd note */
+.fpd-note{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:20px;padding:10px 14px;border:1px solid var(--border);border-radius:7px;line-height:1.8}
+.fpd-note b{color:var(--text2)}
+
+/* footer */
+.foot{margin-top:40px;padding-top:20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:11px;color:var(--text3)}
+.foot span:first-child{font-family:'DM Mono',monospace;font-size:10px}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hdr">
+    <div>
+      <p class="eyebrow">Collections Intelligence</p>
+      <h1>Recovery Rate <span>Analysis</span></h1>
+      <p class="hdr-sub">Per-cohort recovery ratios · first payment default analysis</p>
+    </div>
+    <div class="ver">v6.2 · Zed Collections</div>
+  </header>
+
+  <!-- ── 3-file upload grid ── -->
+  <div class="upload-grid">
+
+    <div class="upload-slot">
+      <div class="upload-slot-label">
+        <span>① Collections emails</span>
+        <span class="req-badge req-pending" id="badge1">required</span>
+      </div>
+      <div class="drop" id="drop1" onclick="document.getElementById('fi1').click()">
+        <div class="drop-icon">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        </div>
+        <h3>Collections (MailMerge)</h3>
+        <p>Drag & drop or <strong>browse</strong></p>
+        <div class="ftypes"><span class="ftype">.xlsx</span><span class="ftype">.xls</span></div>
+        <input type="file" id="fi1" accept=".xlsx,.xls">
+      </div>
+    </div>
+
+    <div class="upload-slot">
+      <div class="upload-slot-label">
+        <span>② Statements dump</span>
+        <span class="req-badge req-pending" id="badge2">required</span>
+      </div>
+      <div class="drop" id="drop2" onclick="document.getElementById('fi2').click()">
+        <div class="drop-icon">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        </div>
+        <h3>Statements Dump (All Users)</h3>
+        <p>Drag & drop or <strong>browse</strong></p>
+        <div class="ftypes"><span class="ftype">.csv</span></div>
+        <input type="file" id="fi2" accept=".csv">
+      </div>
+    </div>
+
+    <div class="upload-slot">
+      <div class="upload-slot-label">
+        <span>③ Most recent delinquency</span>
+        <span class="req-badge req-pending" id="badge3">required</span>
+      </div>
+      <div class="drop" id="drop3" onclick="document.getElementById('fi3').click()">
+        <div class="drop-icon">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        </div>
+        <h3>Most Recent Delinquency V2</h3>
+        <p>Drag & drop or <strong>browse</strong></p>
+        <div class="ftypes"><span class="ftype">.csv</span></div>
+        <input type="file" id="fi3" accept=".csv">
+      </div>
+    </div>
+
+  </div><!-- /upload-grid -->
+
+  <!-- ── file status bar ── -->
+  <div class="file-status-bar">
+    <div class="file-status-row">
+      <span class="fs-num">①</span>
+      <span class="fs-dot pending" id="dot1"></span>
+      <span class="fs-label">Collections emails (MailMerge)</span>
+      <span class="fs-filename fs-pending-text" id="fname1">Waiting for upload…</span>
+      <span class="fs-meta" id="fmeta1"></span>
+    </div>
+    <div class="file-status-row">
+      <span class="fs-num">②</span>
+      <span class="fs-dot pending" id="dot2"></span>
+      <span class="fs-label">Statements Dump (All Users)</span>
+      <span class="fs-filename fs-pending-text" id="fname2">Waiting for upload…</span>
+      <span class="fs-meta" id="fmeta2"></span>
+    </div>
+    <div class="file-status-row">
+      <span class="fs-num">③</span>
+      <span class="fs-dot pending" id="dot3"></span>
+      <span class="fs-label">Most Recent Delinquency V2</span>
+      <span class="fs-filename fs-pending-text" id="fname3">Waiting for upload…</span>
+      <span class="fs-meta" id="fmeta3"></span>
+    </div>
+  </div>
+
+  <!-- progress + error -->
+  <div class="upload-progress" id="progress">
+    <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="progress-label" id="progressLabel">Uploading…</div>
+  </div>
+  <div class="err-box" id="errBox"></div>
+
+  <!-- ── results ── -->
+  <div id="results">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('recovery')">Recovery Rate Analysis</button>
+      <button class="tab-btn" onclick="switchTab('fpd')">First Payment Default</button>
+    </div>
+
+    <!-- TAB 1: Recovery -->
+    <div class="tab-panel active" id="tab-recovery">
+      <p class="slabel">Summary</p>
+      <div class="mgrid" id="metrics"></div>
+      <p class="slabel">Count ratio trend by delinquent date</p>
+      <div class="ccard">
+        <div class="ctitle"><i style="background:var(--green)"></i>Paid ÷ total accounts — count ratio per cohort</div>
+        <div style="position:relative;height:220px"><canvas id="lineChart"></canvas></div>
+      </div>
+      <p class="slabel">Per cohort detail</p>
+      <div class="fbar">
+        <label>Filter</label>
+        <input type="text" id="fsearch" placeholder="e.g. 2026-04" oninput="render()">
+        <label>Sort</label>
+        <select id="fsort" onchange="render()">
+          <option value="date-asc">Date ↑ oldest first</option>
+          <option value="date-desc">Date ↓ newest first</option>
+          <option value="cnt-desc">Total accounts ↓</option>
+          <option value="cr-desc">Count ratio ↓</option>
+          <option value="ar-desc">Balance ratio ↓</option>
+        </select>
+        <span class="fcnt" id="fcnt"></span>
+      </div>
+      <div class="twrap">
+        <table>
+          <thead><tr>
+            <th>Delinquent date</th>
+            <th>Paid</th><th>Delinquent</th><th>Demand letters</th><th>Payment plans</th><th>Small claims</th>
+            <th>Total accts</th>
+            <th>Total balance<span class="thsub">excl. paid</span></th>
+            <th>Count ratio<span class="thsub">paid ÷ total accts</span></th>
+            <th>Balance ratio<span class="thsub">paid amt ÷ total bal</span></th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div><!-- /tab-recovery -->
+
+    <!-- TAB 2: FPD -->
+    <div class="tab-panel" id="tab-fpd">
+      <p class="slabel">Summary</p>
+      <div class="mgrid" id="fpd-metrics"></div>
+      <p class="slabel">FPD rate by cohort month</p>
+      <div class="ccard">
+        <div class="ctitle"><i style="background:var(--red)"></i>First payment default rate — % of accounts that defaulted on first due date</div>
+        <div style="position:relative;height:240px"><canvas id="fpdChart"></canvas></div>
+      </div>
+      <p class="slabel">Cohort detail</p>
+      <div class="fpd-note">
+        <div style="display:flex;flex-wrap:wrap;gap:6px 24px;margin-bottom:10px">
+          <span><b>Cohort</b> = account created month (statements dump)</span>
+          <span><b>Total accounts</b> = unique users in that cohort</span>
+          <span><b>FPD</b> = users whose first statement due date matches their delinquent date</span>
+          <span><b>FPD rate</b> = FPD ÷ total accounts</span>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+          <div style="color:var(--text2);margin-bottom:7px;font-size:10px;letter-spacing:.06em;text-transform:uppercase">Latest status definitions</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <span class="ls ls-pd" style="flex-shrink:0;margin-top:1px">▲ Past Due</span>
+              <span>Account is still delinquent as of the most recent delinquency file — the FPD episode has not been resolved.</span>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <span class="ls ls-res" style="flex-shrink:0;margin-top:1px">✓ Resolved</span>
+              <span>Account is now <b>Current</b> (no longer delinquent), and the latest DQ start date matches the original FPD date — confirming the first-payment delinquency has been settled.</span>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <span class="ls ls-cur" style="flex-shrink:0;margin-top:1px">~ Current</span>
+              <span>Account is now <b>Current</b>, but the latest DQ start date does <b>not</b> match the FPD date — indicating a separate, subsequent delinquency episode occurred after the first payment default.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="dl-bar">
+        <button class="dl-btn dl-red" onclick="downloadFPDcsv()">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download FPD Accounts (.csv)
+        </button>
+        <button class="dl-btn dl-blue" onclick="downloadCohortCSV()">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download Cohort Summary (.csv)
+        </button>
+      </div>
+      <div class="twrap">
+        <table>
+          <thead><tr>
+            <th>Cohort month</th>
+            <th>Total accounts</th>
+            <th>First payment default</th>
+            <th>FPD rate<span class="thsub">fpd ÷ total accts</span></th>
+            <th>FPD rate bar</th>
+            <th>Latest status<span class="thsub">as of most recent DQ file</span></th>
+          </tr></thead>
+          <tbody id="fpd-tbody"></tbody>
+        </table>
+      </div>
+    </div><!-- /tab-fpd -->
+  </div><!-- /results -->
+
+  <footer class="foot">
+    <span>COLLECTIONS · RECOVERY RATE ANALYSIS</span>
+    <span>Data processed client-side — no uploads to any server</span>
+  </footer>
+</div><!-- /wrap -->
+
+<script>
+/* ════════════════════════════════════════════════
+   EMBEDDED DATA (pre-computed, always available)
+════════════════════════════════════════════════ */
+const FPD_DATA = [{"cohort": "2023-10", "total": 4, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2023-12", "total": 6, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2024-01", "total": 7, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2024-03", "total": 27, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2024-04", "total": 11, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2024-05", "total": 25, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2024-06", "total": 52, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2024-07", "total": 36, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2024-08", "total": 40, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2024-09", "total": 24, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2024-10", "total": 57, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2024-11", "total": 25, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2024-12", "total": 54, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2025-01", "total": 145, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2025-02", "total": 132, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2025-03", "total": 104, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2025-04", "total": 206, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2025-05", "total": 346, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2025-06", "total": 535, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2025-07", "total": 457, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2025-08", "total": 744, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2025-09", "total": 299, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2025-10", "total": 84, "fpd": 0, "fpd_rate": 0.0}, {"cohort": "2025-11", "total": 65, "fpd": 4, "fpd_rate": 6.15}, {"cohort": "2025-12", "total": 385, "fpd": 14, "fpd_rate": 3.64}, {"cohort": "2026-01", "total": 219, "fpd": 5, "fpd_rate": 2.28}, {"cohort": "2026-02", "total": 1084, "fpd": 31, "fpd_rate": 2.86}, {"cohort": "2026-03", "total": 1401, "fpd": 36, "fpd_rate": 2.57}, {"cohort": "2026-04", "total": 679, "fpd": 0, "fpd_rate": 0.0}];
+const FPD_ACCOUNTS = [{"user_id": "6cd7289b-938c-4380-9a61-d9d3f2bd8264", "full_name": "Augustus Manuel B. Pe", "first_name": "Augustus Manuel", "last_name": "Pe", "email": "augustusmanuelpe@gmail.com", "cohort_month": "2025-11", "first_due_date": "2026-01-02", "delinquent_date": "2026-01-02", "delinquent_amount": 59873.8, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-01-02"}, {"user_id": "18180faa-d4eb-446d-a167-ec171d19fc8a", "full_name": "Emerson John L. Mariano", "first_name": "Emerson John", "last_name": "Mariano", "email": "ejmbbx@gmail.com", "cohort_month": "2025-11", "first_due_date": "2026-01-02", "delinquent_date": "2026-01-02", "delinquent_amount": 33260.02, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-01-02"}, {"user_id": "3ee166cb-8235-4f5d-ae3e-3772e90751d4", "full_name": "Krista Camille P. Strong", "first_name": "Krista Camille", "last_name": "Strong", "email": "kristacpstrong@gmail.com", "cohort_month": "2025-11", "first_due_date": "2026-01-02", "delinquent_date": "2026-01-02", "delinquent_amount": 14247.89, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-01-02"}, {"user_id": "d8396484-f198-466a-a675-daaab4018d8e", "full_name": "Vaughn Kieffer S. Morales", "first_name": "Vaughn Kieffer", "last_name": "Morales", "email": "vaughnmoralesx@gmail.com", "cohort_month": "2025-11", "first_due_date": "2025-12-22", "delinquent_date": "2025-12-22", "delinquent_amount": 34811.54, "status": "Paid", "latest_status": "Current", "latest_dq_start": "2026-05-02"}, {"user_id": "e38a6fcc-8dec-4066-8655-c8c5f792aeb6", "full_name": "Catherine A. Caeg", "first_name": "Catherine", "last_name": "Caeg", "email": "catryn.caeg24@gmail.com", "cohort_month": "2025-12", "first_due_date": "2026-02-02", "delinquent_date": "2026-02-02", "delinquent_amount": 8840.87, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-02-02"}, {"user_id": "588aed68-ae33-4718-937a-2eae7ff93928", "full_name": "Divina R. Muktadir", "first_name": "Divina", "last_name": "Muktadir", "email": "muktadirdivina@gmail.com", "cohort_month": "2025-12", "first_due_date": "2026-02-02", "delinquent_date": "2026-02-02", "delinquent_amount": 14967.62, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-02-02"}, {"user_id": "8be5117c-3d23-4333-a143-52bf97e6ad6b", "full_name": "Jerome Yohbel C. Barrera", "first_name": "Jerome Yohbel", "last_name": "Barrera", "email": "jjon92067@gmail.com", "cohort_month": "2025-12", "first_due_date": "2026-02-02", "delinquent_date": "2026-02-02", "delinquent_amount": 9687.05, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-02-02"}, {"user_id": "745c45bd-6c05-41cf-8a2e-707c15dd06c0", "full_name": "Jherry Chris T. Gasgonia", "first_name": "Jherry Chris", "last_name": "Gasgonia", "email": "jherrychris3@gmail.com", "cohort_month": "2025-12", "first_due_date": "2026-02-02", "delinquent_date": "2026-02-02", "delinquent_amount": 14960.45, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-02-02"}, {"user_id": "459d30ae-4480-4550-9fe5-33b6116aa366", "full_name": "Jo Mark  M. Decal", "first_name": "Jo Mark", "last_name": "Decal", "email": "joemmd12@gmail.com", "cohort_month": "2025-12", "first_due_date": "2026-02-02", "delinquent_date": "2026-02-02", "delinquent_amount": 32021.64, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-02-02"}, {"user_id": "328dc30b-667e-4065-9d26-7633145f7148", "full_name": "John Jay P. Pontino", "first_name": "John Jay", "last_name": "Pontino", "email": "jjpontino822@gmail.com", "cohort_month": "2025-12", "first_due_date": "2026-02-02", "delinquent_date": "2026-02-02", "delinquent_amount": 32946.0, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-02-02"}, {"user_id": "d11ad06a-57ae-427c-9d11-2e027862ad3c", "full_name": "King Joshua P. Adriano", "first_name": "King Joshua", "last_name": "Adriano", "email": "adrianoking06@gmail.com", "cohort_month": "2025-12", "first_due_date": "2026-02-02", "delinquent_date": "2026-02-02", "delinquent_amount": 84941.21, "status": "Paid", "latest_status": "Past Due", "latest_dq_start": "2026-05-02"}, {"user_id": "d5ba1e81-9927-4499-a4ba-e8db255244e3", "full_name": "Lady Gay  G. Siangco", "first_name": "Lady Gay", "last_name": "Siangco", "email": "ladygay.siangco24@gmail.com", "cohort_month": "2025-12", "first_due_date": "2026-02-18", "delinquent_date": "2026-02-18", "delinquent_amount": 13854.71, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-02-18"}, {"user_id": "c176c281-6a14-4543-b12b-bef6995339e5", "full_name": "Lenz Angelo C. Dionisio", "first_name": "Lenz Angelo", "last_name": "Dionisio", "email": "Lenz_ucc@yahoo.com", "cohort_month": "2025-12", "first_due_date": "2026-02-02", "delinquent_date": "2026-02-02", "delinquent_amount": 9431.74, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-02-02"}, {"user_id": "c824294a-a110-4c69-9483-0ab0cb44cd49", "full_name": "Lorie Mae F. Uy", "first_name": "Lorie Mae", "last_name": "Uy", "email": "loriemaeuy@gmail.com", "cohort_month": "2025-12", "first_due_date": "2026-02-02", "delinquent_date": "2026-02-02", "delinquent_amount": 101715.0, "status": "Paid", "latest_status": "Current", "latest_dq_start": "2026-04-02"}, {"user_id": "256e77ae-9d77-464f-9a5c-96106baa72c4", "full_name": "Mico Mobiel B. Taytay", "first_name": "Mico Mobiel", "last_name": "Taytay", "email": "mico.taytay@icloud.com", "cohort_month": "2025-12", "first_due_date": "2026-02-02", "delinquent_date": "2026-02-02", "delinquent_amount": 8772.0, "status": "Paid", "latest_status": "Current", "latest_dq_start": "2026-03-02"}, {"user_id": "b67026c9-02b9-4304-bea4-9321eaa9f7f0", "full_name": "Noel Jr L. Borja", "first_name": "Noel Jr", "last_name": "Borja", "email": "elleborja00@gmail.com", "cohort_month": "2025-12", "first_due_date": "2026-02-02", "delinquent_date": "2026-02-02", "delinquent_amount": 4953.2, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-02-02"}, {"user_id": "b66ea6fa-f8ea-4038-8d93-ae9ec3ce6839", "full_name": "Scott Nessy A. Matias", "first_name": "Scott Nessy", "last_name": "Matias", "email": "scottnessymatias00@gmail.com", "cohort_month": "2025-12", "first_due_date": "2026-02-02", "delinquent_date": "2026-02-02", "delinquent_amount": 12413.3, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-02-02"}, {"user_id": "61230944-907e-4eb6-b184-c4a8e0eec911", "full_name": "Sid khristoffer Tayag", "first_name": "Sid khristoffer", "last_name": "Tayag", "email": "ander.sid04@gmail.com", "cohort_month": "2025-12", "first_due_date": "2026-02-02", "delinquent_date": "2026-02-02", "delinquent_amount": 11998.04, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-02-02"}, {"user_id": "99c3043c-8fb1-456b-b5d0-5a25166f1ccd", "full_name": "Jan Matthew M. Martinez", "first_name": "Jan Matthew", "last_name": "Martinez", "email": "jmmmartinez07@gmail.com", "cohort_month": "2026-01", "first_due_date": "2026-03-18", "delinquent_date": "2026-03-18", "delinquent_amount": 8446.0, "status": "Paid", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "9eedae4d-c20d-4c19-93a9-08440bc4dda5", "full_name": "LEA MAY D. MAS", "first_name": "LEA MAY", "last_name": "MAS", "email": "masleamay@gmail.com", "cohort_month": "2026-01", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 44000.0, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-04-18"}, {"user_id": "00c5cd96-db43-4dfd-b76e-1eb8f1f37f7e", "full_name": "Mary Ellaine A. Manlosa", "first_name": "Mary Ellaine", "last_name": "Manlosa", "email": "mary.manlosa@yahoo.com", "cohort_month": "2026-01", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 12861.79, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-04-18"}, {"user_id": "71a304f0-f868-49ef-80bb-8373c1d60acc", "full_name": "Pablo S. Lorenzo Jr", "first_name": "Pablo", "last_name": "Lorenzo Jr", "email": "lorenzopablo21@gmail.com", "cohort_month": "2026-01", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 12458.06, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-18"}, {"user_id": "63ecdc4c-ab18-4981-b69e-c05b5e7360b9", "full_name": "Soraida C. Zapanta", "first_name": "Soraida", "last_name": "Zapanta", "email": "soraidazapanta19@gmail.com", "cohort_month": "2026-01", "first_due_date": "2026-03-18", "delinquent_date": "2026-03-18", "delinquent_amount": 23747.51, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-03-18"}, {"user_id": "38d3bf3c-e00f-42a2-bf23-4329f5399c9a", "full_name": "ANGELYN M. DELA CRUZ", "first_name": "ANGELYN", "last_name": "DELA CRUZ", "email": "cassandrabox025@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 34970.2, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-04-18"}, {"user_id": "9bc63351-2ee2-47ae-8312-870f68ad6409", "full_name": "Andrew F. Zelman", "first_name": "Andrew", "last_name": "Zelman", "email": "andy.zelman@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 7826.37, "status": "Paid", "latest_status": "Current", "latest_dq_start": "2026-05-18"}, {"user_id": "e1b2987d-578a-4c9d-a12c-54e861895cef", "full_name": "Baby Jacquiline V. Macdon", "first_name": "Baby Jacquiline", "last_name": "Macdon", "email": "macdonbaby@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 8635.35, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-18"}, {"user_id": "779a4d99-85bc-4966-b317-7af9fb567505", "full_name": "Blue Edward C. Sanchez", "first_name": "Blue Edward", "last_name": "Sanchez", "email": "mdrtbluesanchez@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 34599.38, "status": "Paid", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "32d76df8-e800-4a48-b06b-f5492233ec73", "full_name": "CHRISTINE P. BORDADO", "first_name": "CHRISTINE", "last_name": "BORDADO", "email": "cpbordado@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 14500.0, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-18"}, {"user_id": "0f885594-d9da-4a1e-9058-2a34469d2937", "full_name": "Christian Emmanuel J. Navarro", "first_name": "Christian Emmanuel", "last_name": "Navarro", "email": "christianemmanuelnavarro@yahoo.com", "cohort_month": "2026-02", "first_due_date": "2026-04-02", "delinquent_date": "2026-04-02", "delinquent_amount": 30150.0, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-02"}, {"user_id": "1abcafa7-c43c-440e-8e89-1d4f7703ebb6", "full_name": "Czarina Joy M. Sacdalan", "first_name": "Czarina Joy", "last_name": "Sacdalan", "email": "anirazmarquez@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 25749.0, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-18"}, {"user_id": "2c47aaf6-0f06-4c8c-b24b-8d7389f5d204", "full_name": "DANICA ANN B. NAZARIA", "first_name": "DANICA ANN", "last_name": "NAZARIA", "email": "nialnazaria15@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 7000.0, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-18"}, {"user_id": "44486940-3ad9-4c15-9069-bfe6df52ad2d", "full_name": "DWIGHT STEVEN A. PADILLA", "first_name": "DWIGHT STEVEN", "last_name": "PADILLA", "email": "dwightstevenpadilla@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-02", "delinquent_date": "2026-04-02", "delinquent_amount": 13633.46, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-04-02"}, {"user_id": "e4ab3bff-07ad-4127-9c62-648c1f2f2aed", "full_name": "Dhom F. Bautista", "first_name": "Dhom", "last_name": "Bautista", "email": "dhom_bautista34@yahoo.com", "cohort_month": "2026-02", "first_due_date": "2026-04-02", "delinquent_date": "2026-04-02", "delinquent_amount": 27070.77, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-02"}, {"user_id": "b1dec97e-8635-442c-b9ea-6c981fe7fa09", "full_name": "Doreen Angela R. Ramos", "first_name": "Doreen Angela", "last_name": "Ramos", "email": "d.jelly14@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-02", "delinquent_date": "2026-04-02", "delinquent_amount": 34628.89, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-02"}, {"user_id": "3d02eba4-7028-4d23-9711-55794d3f2b56", "full_name": "JET KRISTOFFER L. DOMALAON", "first_name": "JET KRISTOFFER", "last_name": "DOMALAON", "email": "jkld21712@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 3949.39, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-04-18"}, {"user_id": "5fd6935e-38aa-41f8-8b1a-f3ef291224e8", "full_name": "JET MARK MALALAD ANTONES", "first_name": "JET MARK MALALAD", "last_name": "ANTONES", "email": "jetmark.antones28@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 12470.17, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-04-18"}, {"user_id": "2a6edb1a-41a8-4e20-a71f-ccac8f886de5", "full_name": "Jerosmie D. Yap", "first_name": "Jerosmie", "last_name": "Yap", "email": "yapjerosmie@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 61352.82, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-04-18"}, {"user_id": "ae77bb39-d6d4-4116-8a14-4765fc6f1bc0", "full_name": "Jesson L. Valenzuela", "first_name": "Jesson", "last_name": "Valenzuela", "email": "jeuxvaux@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 24840.09, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-04-18"}, {"user_id": "b19c7041-37ea-4b75-bec2-023f895dfb0c", "full_name": "Jose Mari L. Siriban", "first_name": "Jose Mari", "last_name": "Siriban", "email": "iramesoj.001@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-02", "delinquent_date": "2026-04-02", "delinquent_amount": 49646.75, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-02"}, {"user_id": "b1e0e6fc-15f4-4bcc-91e0-0b4671ed32bc", "full_name": "Kenette M. Seril", "first_name": "Kenette", "last_name": "Seril", "email": "kenser010794@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-02", "delinquent_date": "2026-04-02", "delinquent_amount": 64890.0, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-02"}, {"user_id": "42cd37aa-fa57-4258-8beb-e4852b9a221e", "full_name": "LAARNI S. CANTORIA", "first_name": "LAARNI", "last_name": "CANTORIA", "email": "laarni.cantoria@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 13925.57, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-18"}, {"user_id": "af14df73-7fa3-423b-a944-6654c57986ef", "full_name": "Leo Vincent D. Corpiz", "first_name": "Leo Vincent", "last_name": "Corpiz", "email": "vincentcorpiz@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 3906.85, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-04-18"}, {"user_id": "4c369e90-426d-4528-8ed8-015ee33fafd9", "full_name": "Luis Emmanuel G. Soliman", "first_name": "Luis Emmanuel", "last_name": "Soliman", "email": "solimanlack@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 4774.45, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-04-18"}, {"user_id": "ea60d58d-243b-4a83-b07f-1a85315e724f", "full_name": "Ma Victoria C. Payawal", "first_name": "Ma Victoria", "last_name": "Payawal", "email": "victoriapayawal@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 30522.56, "status": "Paid", "latest_status": "Current", "latest_dq_start": "2026-05-18"}, {"user_id": "eeefea08-7e2d-43f3-82e8-f299839b3e54", "full_name": "Mitchell R. Sales", "first_name": "Mitchell", "last_name": "Sales", "email": "msales010882@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 4820.61, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-04-18"}, {"user_id": "2f681c5c-4922-4a78-86ff-5435b2b312ed", "full_name": "PRISTINE PRIMROSE M. ROMANDI", "first_name": "PRISTINE PRIMROSE", "last_name": "ROMANDI", "email": "primromandi@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 2200.0, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-04-18"}, {"user_id": "2c4ecef1-3563-485a-bc0b-490f577ac0f0", "full_name": "Paola Adelaida Vidallon", "first_name": "Paola Adelaida", "last_name": "Vidallon", "email": "paola.vidallon@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 14997.92, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-18"}, {"user_id": "a51102eb-9008-4bcf-9c68-baf81f7baa13", "full_name": "RENEIL D. FRIAS", "first_name": "RENEIL", "last_name": "FRIAS", "email": "godongheyshantal@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 9973.0, "status": "Payment Plans", "latest_status": "Past Due", "latest_dq_start": "2026-04-18"}, {"user_id": "efe5bd55-5357-4899-99ae-18dc41ee4e19", "full_name": "ROSINE III S. SANTOS", "first_name": "ROSINE III", "last_name": "SANTOS", "email": "rosinesantos.personal@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 9435.0, "status": "Payment Plans", "latest_status": "Past Due", "latest_dq_start": "2026-04-18"}, {"user_id": "13cd75af-88e3-4dac-8a37-8a58c289183d", "full_name": "Riezel D. Yambot", "first_name": "Riezel", "last_name": "Yambot", "email": "yambot.riezel1997@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 27753.07, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-18"}, {"user_id": "b8ef6545-bdfe-4adc-8205-f6f629d58b98", "full_name": "SHERWIN M. PELAYO", "first_name": "SHERWIN", "last_name": "PELAYO", "email": "sherwinmpelayo@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 35748.19, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-04-18"}, {"user_id": "a0f561f6-e96b-4c22-9f32-cea061a14d2a", "full_name": "Sean Kendrick T. Manicad", "first_name": "Sean Kendrick", "last_name": "Manicad", "email": "kendrickmanicad@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-02", "delinquent_date": "2026-04-02", "delinquent_amount": 37255.74, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-02"}, {"user_id": "3ae853a5-af9f-49e9-ab1f-9c8c6b150a50", "full_name": "Sharvien Paul M. Claro", "first_name": "Sharvien Paul", "last_name": "Claro", "email": "claro.sharvienpaul.m5005@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-02", "delinquent_date": "2026-04-02", "delinquent_amount": 8660.98, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-02"}, {"user_id": "a73f12fd-ff17-4aee-baf1-0c699de6fe45", "full_name": "Trixie Joan S. Pinuela", "first_name": "Trixie Joan", "last_name": "Pinuela", "email": "tspinuela@gmail.com", "cohort_month": "2026-02", "first_due_date": "2026-04-18", "delinquent_date": "2026-04-18", "delinquent_amount": 46023.46, "status": "Demand Letters", "latest_status": "Past Due", "latest_dq_start": "2026-04-18"}, {"user_id": "e2d65043-6699-4386-842b-cd5990004042", "full_name": "AARON CHARLES D. CABRAL", "first_name": "AARON CHARLES", "last_name": "CABRAL", "email": "aaron.cabral91@yahoo.com.ph", "cohort_month": "2026-03", "first_due_date": "2026-05-02", "delinquent_date": "2026-05-02", "delinquent_amount": 8477.4, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-05-02"}, {"user_id": "82e9a9cd-3df6-4546-9090-05ba3033a8b7", "full_name": "ABEGAIL D. LADIA", "first_name": "ABEGAIL", "last_name": "LADIA", "email": "gail.ladia.16@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 14785.25, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-05-18"}, {"user_id": "2ff60041-3816-4858-9d6b-5f8bda3358f3", "full_name": "AL MUZZAMMIL L. GUMANDER", "first_name": "AL MUZZAMMIL", "last_name": "GUMANDER", "email": "gumander1996@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 35603.85, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-05-18"}, {"user_id": "3aa1ad42-96d7-4afa-8661-c1ddf2b8f594", "full_name": "ALEJANDRO MIGUEL B. RAPOSAS", "first_name": "ALEJANDRO MIGUEL", "last_name": "RAPOSAS", "email": "miguelraposas@yahoo.com", "cohort_month": "2026-03", "first_due_date": "2026-05-02", "delinquent_date": "2026-05-02", "delinquent_amount": 26675.41, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-02"}, {"user_id": "ed0acd96-2c05-4b0f-9896-b3101dfad02d", "full_name": "Alessandro Rafael V. Cruz", "first_name": "Alessandro Rafael", "last_name": "Cruz", "email": "alessandrorafaelcruz@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 72916.67, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "9023fb70-d9b0-45d6-b61e-90c697ec8fde", "full_name": "Alfred Vincent A. Zarate", "first_name": "Alfred Vincent", "last_name": "Zarate", "email": "zalfredvincent@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 9821.5, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "f6d4ef24-c79d-4c85-9a90-2a60c92f8820", "full_name": "Anariza Amelynn A. Del Rosario", "first_name": "Anariza Amelynn", "last_name": "Del Rosario", "email": "azia.delros@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 14938.0, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "b9986863-b211-4b74-8f90-a3202f855d3a", "full_name": "Aris M. Samson", "first_name": "Aris", "last_name": "Samson", "email": "arismsamson@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 22549.55, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-05-18"}, {"user_id": "5a02f248-22c2-4010-8d9c-d04ecdced536", "full_name": "Ceejay A. Taguibao", "first_name": "Ceejay", "last_name": "Taguibao", "email": "ceejay12taguibao@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 14922.3, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "45b05715-5cc5-42bc-b598-2ea5a26817a5", "full_name": "Christian A. Zumel", "first_name": "Christian", "last_name": "Zumel", "email": "christianzumel18@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 9429.31, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "ee6626cc-bc98-40fd-ae11-49580fb8d597", "full_name": "Daniel Al B. Delfin", "first_name": "Daniel Al", "last_name": "Delfin", "email": "dbdelfin.delfinlaw@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-02", "delinquent_date": "2026-05-02", "delinquent_amount": 0.0, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-05-02"}, {"user_id": "3bb7c761-ec4b-4ce0-9492-030455256f07", "full_name": "Gretel D. San Jose", "first_name": "Gretel", "last_name": "San Jose", "email": "sanjosegretel1@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 907.44, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-05-18"}, {"user_id": "b811a27a-ea9a-4ecb-9503-ba07ed1959b2", "full_name": "JETZ G. GABRIEL", "first_name": "JETZ", "last_name": "GABRIEL", "email": "jetzggabriel@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-02", "delinquent_date": "2026-05-02", "delinquent_amount": 6063.73, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-05-02"}, {"user_id": "99f63cdf-5aff-4a57-8b4d-62cef0497783", "full_name": "JOEL LUCKY C. ALDOR", "first_name": "JOEL LUCKY", "last_name": "ALDOR", "email": "joel.aldor@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-02", "delinquent_date": "2026-05-02", "delinquent_amount": 22865.0, "status": "Payment Plans", "latest_status": "Past Due", "latest_dq_start": "2026-05-02"}, {"user_id": "02518ef8-864f-43bd-91a9-6093d5c66b2f", "full_name": "Jefferson Kevin A. Lerio", "first_name": "Jefferson Kevin", "last_name": "Lerio", "email": "jeffersonkevin9596@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 139609.01, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "03fa3f13-e822-4a5d-9287-2795ae4de656", "full_name": "Joey Aoshi R. Tekiko", "first_name": "Joey Aoshi", "last_name": "Tekiko", "email": "tekikojoey@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 4668.23, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "7c9a1870-f144-4b48-9666-6a72406ad563", "full_name": "John Ezekiel S. Jacinto", "first_name": "John Ezekiel", "last_name": "Jacinto", "email": "tospaopi@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 114501.3, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "b073fd85-5afc-45c6-86dc-2fe76175ea72", "full_name": "John Jerric L. Apostol", "first_name": "John Jerric", "last_name": "Apostol", "email": "lacsonjerric@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-02", "delinquent_date": "2026-05-02", "delinquent_amount": 24937.58, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-02"}, {"user_id": "ba5e1c88-f420-4474-ab3e-b123c987be61", "full_name": "Judalyn F. Podutan", "first_name": "Judalyn", "last_name": "Podutan", "email": "migzeup@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 6658.75, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "96a79525-8c1c-462f-812e-c42eec714e51", "full_name": "Junne B. Ylagan", "first_name": "Junne", "last_name": "Ylagan", "email": "jbylagan2008@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 634.43, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-05-18"}, {"user_id": "8216d3e8-500e-43d1-af27-558adb008b47", "full_name": "Justine Ryan S. Juco", "first_name": "Justine Ryan", "last_name": "Juco", "email": "jucojryan@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-02", "delinquent_date": "2026-05-02", "delinquent_amount": 134943.5, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-02"}, {"user_id": "ca68d5d3-933c-453d-b705-f6aba3f1185d", "full_name": "Kathryne Camyle I. Renigen", "first_name": "Kathryne Camyle", "last_name": "Renigen", "email": "kairenigen@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 86636.98, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "9fa3382b-beb8-4d74-ad6a-180d4c69c105", "full_name": "Klineton John R. Lozada", "first_name": "Klineton John", "last_name": "Lozada", "email": "klinelozada@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 23875.56, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-05-18"}, {"user_id": "309d5512-b879-4165-9ec6-b316f4d3d45f", "full_name": "Loremz Jorge S. Mercado", "first_name": "Loremz Jorge", "last_name": "Mercado", "email": "ljdedey08@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 8788.0, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "f493e25f-bf09-4639-9ed3-86ab58aa2b1c", "full_name": "Louis Angelo R. Alvarez", "first_name": "Louis Angelo", "last_name": "Alvarez", "email": "gelo.alvarez@outlook.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 46090.62, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "cfc84551-ed23-4de4-b5e1-967ecf96bc6a", "full_name": "Lourlee Q. Potenciando", "first_name": "Lourlee", "last_name": "Potenciando", "email": "lourleepotenciando@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-02", "delinquent_date": "2026-05-02", "delinquent_amount": 33441.52, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-02"}, {"user_id": "f79d09a0-dbe2-4661-858f-0262279a94ba", "full_name": "Ma. Pauline C. Laboga", "first_name": "Ma. Pauline", "last_name": "Laboga", "email": "mpclaboga@yahoo.com.ph", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 14911.89, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "bbbcc8bf-1847-4ce4-8ecd-7f1346fd4765", "full_name": "Marc David A. Toledo", "first_name": "Marc David", "last_name": "Toledo", "email": "vestmacky052003@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 20457.72, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-05-18"}, {"user_id": "e05b279b-4700-4560-9fd2-29c27f6f5a5b", "full_name": "Margareth Jewel C. Navarro", "first_name": "Margareth Jewel", "last_name": "Navarro", "email": "margarethjewelnavarro@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 10241.56, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "93c4aaf8-f9e6-4db1-909d-3426e39dad62", "full_name": "Marianne Elaine S. Ching", "first_name": "Marianne Elaine", "last_name": "Ching", "email": "marianneelaineching@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 4413.94, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-05-18"}, {"user_id": "2e8646ca-e276-48f2-967d-0bc98fe20cf2", "full_name": "Marjun J. Dacutanan", "first_name": "Marjun", "last_name": "Dacutanan", "email": "znujram@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 17630.84, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "9a0e85c8-a4d8-418f-8aff-bc408b3d0205", "full_name": "Marnelli C. Glean", "first_name": "Marnelli", "last_name": "Glean", "email": "marnieglean15@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 24988.04, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "77355354-d078-4f1c-be46-cc8076eb9812", "full_name": "Nestor Jay R. Medina", "first_name": "Nestor Jay", "last_name": "Medina", "email": "nestorjaym@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 29860.5, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "1bd0d81d-45a2-4719-8f2f-4f85bf0e525e", "full_name": "Ryan Cyrus O. Agbones", "first_name": "Ryan Cyrus", "last_name": "Agbones", "email": "ryancyrus@google.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 16998.83, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-18"}, {"user_id": "d0cc950f-22ec-49c5-949c-e74ac6e71f17", "full_name": "Sarah Mae B. Buenabajo", "first_name": "Sarah Mae", "last_name": "Buenabajo", "email": "sarahmaebuenabajo@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-18", "delinquent_date": "2026-05-18", "delinquent_amount": 5582.65, "status": "Paid", "latest_status": "Resolved", "latest_dq_start": "2026-05-18"}, {"user_id": "e3b8e29e-6da6-484a-89ee-8b75e37d64f9", "full_name": "Zavrey M. Seril", "first_name": "Zavrey", "last_name": "Seril", "email": "dazekamini@gmail.com", "cohort_month": "2026-03", "first_due_date": "2026-05-02", "delinquent_date": "2026-05-02", "delinquent_amount": 135244.0, "status": "Delinquent", "latest_status": "Past Due", "latest_dq_start": "2026-05-02"}];
+
+/* ════════════════════════════════════════════════
+   STATE
+════════════════════════════════════════════════ */
+const STATUSES = ['Paid','Delinquent','Demand Letters','Payment Plans','Small Claims'];
+const BC = {'Paid':'bp','Delinquent':'bd','Demand Letters':'bm','Payment Plans':'bl2','Small Claims':'bs'};
+let cohortRows = [], lineChart = null, fpdChart = null, fpdBuilt = false;
+
+// File buffers — null until uploaded
+let buf1 = null, buf2 = null, buf3 = null;  // collections xlsx, statements csv, dq csv
+let filesLoaded = [false, false, false];
+
+/* ════════════════════════════════════════════════
+   UPLOAD WIRING — 3 drop zones
+════════════════════════════════════════════════ */
+function wireFile(dropId, inputId, idx, accept) {
+  const drop  = document.getElementById(dropId);
+  const input = document.getElementById(inputId);
+  drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop',      e => { e.preventDefault(); drop.classList.remove('over'); handleFile(e.dataTransfer.files[0], idx); });
+  input.addEventListener('change',   e => handleFile(e.target.files[0], idx));
+}
+wireFile('drop1','fi1',1);
+wireFile('drop2','fi2',2);
+wireFile('drop3','fi3',3);
+
+function handleFile(file, idx) {
+  if (!file) return;
+  document.getElementById('errBox').classList.remove('on');
+  const reader = new FileReader();
+  reader.onerror = () => showErr('Could not read file ' + idx);
+  reader.onload  = e => {
+    if (idx === 1) buf1 = e.target.result;
+    if (idx === 2) buf2 = e.target.result;
+    if (idx === 3) buf3 = e.target.result;
+    markFileLoaded(file, idx);
+    tryRun();
+  };
+  if (idx === 1) reader.readAsArrayBuffer(file);
+  else           reader.readAsText(file);
+}
+
+function markFileLoaded(file, idx) {
+  filesLoaded[idx-1] = true;
+  // Drop zone
+  const drop = document.getElementById('drop'+idx);
+  drop.classList.add('done');
+  // Badge
+  const badge = document.getElementById('badge'+idx);
+  badge.textContent = 'loaded';
+  badge.className   = 'req-badge req-done';
+  // Status bar
+  document.getElementById('dot'+idx).className   = 'fs-dot loaded';
+  const fnEl = document.getElementById('fname'+idx);
+  fnEl.textContent  = file.name;
+  fnEl.className    = 'fs-filename';
+  fnEl.style.fontStyle = 'normal';
+  // Meta (row count)
+  if (idx === 1) {
+    document.getElementById('fmeta'+idx).textContent = '.xlsx';
+  } else {
+    const lines = (idx === 2 ? buf2 : buf3).trim().split('\n').length - 1;
+    document.getElementById('fmeta'+idx).textContent = lines.toLocaleString() + ' records';
+  }
+  // Progress bar
+  const loaded = filesLoaded.filter(Boolean).length;
+  const pct    = Math.round(loaded / 3 * 100);
+  document.getElementById('progress').classList.add('show');
+  document.getElementById('progressFill').style.width  = pct + '%';
+  document.getElementById('progressLabel').textContent =
+    loaded < 3 ? `${loaded} of 3 files loaded — waiting for remaining file${loaded===2?'':'s'}…`
+               : 'All 3 files loaded — generating report…';
+}
+
+function tryRun() {
+  if (!buf1 || !buf2 || !buf3) return;
+  try {
+    processAll();
+  } catch(err) {
+    showErr(err.message);
+    console.error(err);
+  }
+}
+
+function showErr(msg) {
+  const b = document.getElementById('errBox');
+  b.textContent = 'Error: ' + msg;
+  b.classList.add('on');
+}
+
+/* ════════════════════════════════════════════════
+   PARSE ALL 3 FILES → BUILD DATA
+════════════════════════════════════════════════ */
+function processAll() {
+  /* ── 1. Parse statements CSV: firstDueMap + userCohortMap ── */
+  const firstDueMap = {}, userCohortMap = {};
+  const stmtLines = buf2.trim().split('\n');
+  const sh = stmtLines[0].split(',').map(s => s.trim().replace(/^"|"$/g,''));
+  const uidI = sh.indexOf('user_id'), dueI = sh.indexOf('due_date'), creI = sh.indexOf('created_at');
+  // Use Date.UTC to avoid local-timezone shift (e.g. UTC+8 would give wrong day)
+  const parseMDY = s => {
+    const p = s.split('/');
+    if (p.length < 3) return null;
+    const y = parseInt(p[2]) < 100 ? 2000 + parseInt(p[2]) : parseInt(p[2]);
+    const ms = Date.UTC(y, parseInt(p[0])-1, parseInt(p[1]));
+    return isNaN(ms) ? null : new Date(ms);
+  };
+  for (let i = 1; i < stmtLines.length; i++) {
+    const c   = stmtLines[i].split(',');
+    const uid = (c[uidI]||'').trim().replace(/^"|"$/g,'');
+    const due = parseMDY((c[dueI]||'').trim().replace(/^"|"$/g,''));
+    const cre = parseMDY((c[creI]||'').trim().replace(/^"|"$/g,''));
+    if (!uid || !due) continue;
+    const dISO = due.toISOString().slice(0,10);
+    if (!firstDueMap[uid] || dISO < firstDueMap[uid]) firstDueMap[uid] = dISO;
+    if (cre && !userCohortMap[uid]) userCohortMap[uid] = cre.toISOString().slice(0,7);
+  }
+
+  /* ── 2. Parse most recent delinquency CSV: dqMap ── */
+  const dqMap = {};
+  const dqLines = buf3.trim().split('\n');
+  const dh = dqLines[0].split(',').map(s => s.trim().replace(/^"|"$/g,''));
+  const dqUidI = dh.indexOf('user_id'), dqStatI = dh.indexOf('status'), dqStartI = dh.indexOf('latest_dq_start_date');
+  for (let i = 1; i < dqLines.length; i++) {
+    const c   = dqLines[i].split(',');
+    const uid = (c[dqUidI]||'').trim().replace(/^"|"$/g,'');
+    const st  = (c[dqStatI]||'').trim().replace(/^"|"$/g,'');
+    const dqs = (c[dqStartI]||'').trim().replace(/^"|"$/g,'');
+    if (uid) dqMap[uid] = { status: st, latest_dq_start: dqs };
+  }
+
+  /* ── 3. Parse collections XLSX ── */
+  const wb  = XLSX.read(buf1, { type:'array', cellDates:true });
+  let dataRows = null, sheetUsed = '';
+  for (const sn of wb.SheetNames) {
+    const ws  = wb.Sheets[sn];
+    if (!ws['!ref']) continue;
+    const raw = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
+    if (!raw || raw.length < 2) continue;
+    const hdr = (raw[0]||[]).map(v => v==null?'':String(v).trim());
+    let daysC=-1, statusC=-1, amtC=-1, dateC=-1, uidC=-1, nameC=-1, fn=-1, ln=-1, emailC=-1, bktCount=0;
+    hdr.forEach((h,i) => {
+      if (h==='user_ID'||h==='user_id') uidC=i;
+      if (h==='Full Name') nameC=i;
+      if (h==='First Name') fn=i;
+      if (h==='Last Name') ln=i;
+      if (h==='Email') emailC=i;
+      if (h==='Delinquent Days') daysC=i;
+      if (h==='Delinquent Date') dateC=i;
+      if (h.startsWith('Delinquent Amount')) amtC=i;
+      if (h==='Delinquency Buckets') { bktCount++; if (bktCount===2) statusC=i; }
+    });
+    if (daysC<0) daysC=8; if (statusC<0) statusC=10;
+    if (amtC<0) amtC=7;   if (dateC<0) dateC=6;
+    if (uidC<0) uidC=1;   if (nameC<0) nameC=2;
+
+    const found = [];
+    for (let i=1; i<raw.length; i++) {
+      const row = raw[i]; if (!row) continue;
+      const b = bucket(row[daysC]); if (!b) continue;
+      const st = row[statusC]==null?'':String(row[statusC]).trim();
+      if (!st || !STATUSES.includes(st)) continue;
+      const amt = parseFloat(row[amtC])||0;
+      const uid = row[uidC]==null?'':String(row[uidC]).trim();
+      const nm  = row[nameC]==null?'':String(row[nameC]).trim();
+      const fnm = fn>=0 && row[fn]!=null ? String(row[fn]).trim() : '';
+      const lnm = ln>=0 && row[ln]!=null ? String(row[ln]).trim() : '';
+      const em  = emailC>=0 && row[emailC]!=null ? String(row[emailC]).trim() : '';
+      let ds = '';
+      const rd = row[dateC];
+      if (rd instanceof Date) {
+        // Extract local date parts — avoids UTC conversion timezone shift
+        const yy=rd.getFullYear(), mm=String(rd.getMonth()+1).padStart(2,'0'), dd=String(rd.getDate()).padStart(2,'0');
+        ds = yy+'-'+mm+'-'+dd;
+      } else if (typeof rd==='number'&&rd>0) {
+        // Excel serial → UTC date (serial is always timezone-neutral)
+        const tmp=new Date(Math.round((rd-25569)*86400*1000));
+        const yy=tmp.getUTCFullYear(), mm=String(tmp.getUTCMonth()+1).padStart(2,'0'), dd=String(tmp.getUTCDate()).padStart(2,'0');
+        ds = yy+'-'+mm+'-'+dd;
+      }
+      else if (rd) ds = String(rd).slice(0,10);
+      found.push({ bucket:b, status:st, amt, date:ds, uid, nm, fnm, lnm, em });
+    }
+    if (found.length>0) { dataRows=found; sheetUsed=sn; break; }
+  }
+  if (!dataRows||dataRows.length===0) throw new Error('No valid data found in collections file.');
+
+  /* ── 4. Show results ── */
+  document.getElementById('progressLabel').textContent = 'Report ready ✓';
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('results').style.animation = 'fadeUp .35s ease';
+
+  /* ── 5. Build recovery tab ── */
+  buildRecovery(dataRows);
+
+  /* ── 6. Build FPD tab ── */
+  buildFPDDynamic(dataRows, firstDueMap, userCohortMap, dqMap);
+}
+
+/* ════════════════════════════════════════════════
+   BUCKET HELPER
+════════════════════════════════════════════════ */
+function bucket(d) {
+  d = parseFloat(d); if (isNaN(d)) return '';
+  if (d< 30) return '1-30 Days';
+  if (d< 60) return '31-60 Days';
+  if (d< 89) return '61-89 Days';
+  if (d<120) return '90-120 Days';
+  if (d<150) return '121-150 Days';
+  if (d<180) return '151-180 Days';
+  return 'Above 180 Days';
+}
+
+/* ════════════════════════════════════════════════
+   RECOVERY TAB
+════════════════════════════════════════════════ */
+function buildRecovery(rows) {
+  const byDate = {};
+  rows.forEach(r => {
+    const key = r.date||'Unknown';
+    if (!byDate[key]) { byDate[key]={date:key}; STATUSES.forEach(s=>{byDate[key][s]={n:0,amt:0};}); }
+    byDate[key][r.status].n++;
+    byDate[key][r.status].amt += r.amt;
+  });
+  cohortRows = Object.values(byDate).map(d => {
+    const tN=STATUSES.reduce((a,s)=>a+d[s].n,0);
+    const tA=STATUSES.reduce((a,s)=>a+d[s].amt,0);
+    const npB=STATUSES.filter(s=>s!=='Paid').reduce((a,s)=>a+d[s].amt,0);
+    const pN=d['Paid'].n, pA=d['Paid'].amt;
+    return { date:d.date, d, totalN:tN, nonPaidBal:npB, totalBal:tA, paidN:pN, paidAmt:pA,
+             cntRatio:tN>0?(pN/tN)*100:null, balRatio:tA!==0?(pA/tA)*100:null };
+  }).sort((a,b)=>a.date.localeCompare(b.date));
+
+  const gN=cohortRows.reduce((a,r)=>a+r.totalN,0);
+  const gNPB=cohortRows.reduce((a,r)=>a+r.nonPaidBal,0);
+  const gPN=cohortRows.reduce((a,r)=>a+r.paidN,0);
+  const gPA=cohortRows.reduce((a,r)=>a+r.paidAmt,0);
+  const gTB=cohortRows.reduce((a,r)=>a+r.totalBal,0);
+  const oCR=gN>0?gPN/gN*100:0, oAR=gTB!==0?gPA/gTB*100:0;
+  document.getElementById('metrics').innerHTML=`
+    <div class="mc bl"><div class="mlbl">Cohort dates</div><div class="mval">${cohortRows.length}</div><div class="msub">${gN.toLocaleString()} total accounts</div></div>
+    <div class="mc tl"><div class="mlbl">Balance excl. paid</div><div class="mval" style="font-size:15px">${php(gNPB)}</div><div class="msub">Paid: ${php(gPA)}</div></div>
+    <div class="mc gr"><div class="mlbl">Count ratio overall</div><div class="mval" style="color:var(--green)">${pct(oCR)}</div><div class="msub">Paid ${gPN.toLocaleString()} ÷ total ${gN.toLocaleString()}</div></div>
+    <div class="mc am"><div class="mlbl">Balance ratio overall</div><div class="mval" style="color:var(--blue)">${pct(oAR)}</div><div class="msub">Paid amt ÷ whole cohort bal</div></div>`;
+
+  if (lineChart) { lineChart.destroy(); lineChart=null; }
+  const pts=cohortRows.filter(r=>r.totalN>=5&&r.cntRatio!==null);
+  lineChart = new Chart(document.getElementById('lineChart'),{type:'line',
+    data:{labels:pts.map(r=>r.date.slice(5)),datasets:[{data:pts.map(r=>+r.cntRatio.toFixed(1)),
+      borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,0.07)',borderWidth:2,pointRadius:3,
+      fill:true,tension:0.3,pointBackgroundColor:pts.map(r=>r.cntRatio>=75?'#22c55e':r.cntRatio>=40?'#f59e0b':'#ef4444')}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>c.raw+'%',title:t=>'Date: '+pts[t[0].dataIndex].date}}},
+      scales:{x:{ticks:{color:'#525d6e',font:{family:'DM Mono',size:9},maxTicksLimit:22,maxRotation:45},grid:{color:'rgba(255,255,255,0.05)'}},
+              y:{min:0,ticks:{color:'#525d6e',font:{family:'DM Mono',size:10},callback:v=>v+'%'},grid:{color:'rgba(255,255,255,0.05)'}}}}});
+  render();
+}
+
+function render() {
+  const q=(document.getElementById('fsearch').value||'').toLowerCase();
+  const s=document.getElementById('fsort').value;
+  let rows=cohortRows.filter(r=>r.date.toLowerCase().includes(q));
+  rows.sort((a,b)=>{
+    if(s==='date-asc')  return a.date.localeCompare(b.date);
+    if(s==='date-desc') return b.date.localeCompare(a.date);
+    if(s==='cnt-desc')  return b.totalN-a.totalN;
+    if(s==='cr-desc')   return (b.cntRatio??-Infinity)-(a.cntRatio??-Infinity);
+    if(s==='ar-desc')   return (b.balRatio??-Infinity)-(a.balRatio??-Infinity);
+    return 0;
+  });
+  document.getElementById('fcnt').textContent=rows.length+' / '+cohortRows.length+' dates';
+  const tbody=document.getElementById('tbody'); tbody.innerHTML='';
+  rows.forEach(r=>{
+    const cW=r.cntRatio!=null?Math.min(r.cntRatio/Math.max(...rows.map(x=>x.cntRatio??0),1)*100,100):0;
+    const aW=r.balRatio!=null?Math.min(Math.abs(r.balRatio)/Math.max(...rows.map(x=>Math.abs(x.balRatio??0)),1)*100,100):0;
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td><div class="dcell"><span class="dmain">${r.date}</span><span class="dsub">${r.totalN} accounts</span></div></td>`+
+      STATUSES.map(st=>`<td>${r.d[st].n>0?`<span class="badge ${BC[st]}">${r.d[st].n.toLocaleString()}</span>`:'<span class="bn">—</span>'}</td>`).join('')+
+      `<td class="tot-val">${r.totalN.toLocaleString()}</td><td class="amt">${php(r.nonPaidBal)}</td>`+
+      `<td><div class="rcell"><div class="rbar"><div class="rfill fg" style="width:${cW}%"></div></div><span class="rval ${rc(r.cntRatio)}">${r.cntRatio!=null?pct(r.cntRatio):'—'}</span></div></td>`+
+      `<td><div class="rcell"><div class="rbar"><div class="rfill fb" style="width:${aW}%"></div></div><span class="rval ${rc(r.balRatio)}">${r.balRatio!=null?pct(r.balRatio):'—'}</span></div></td>`;
+    tbody.appendChild(tr);
+  });
+  const tN=rows.reduce((a,r)=>a+r.totalN,0),tNB=rows.reduce((a,r)=>a+r.nonPaidBal,0);
+  const tPN=rows.reduce((a,r)=>a+r.paidN,0),tTB=rows.reduce((a,r)=>a+r.totalBal,0),tPA=rows.reduce((a,r)=>a+r.paidAmt,0);
+  const tCR=tN>0?tPN/tN*100:0,tAR=tTB!==0?tPA/tTB*100:0;
+  const tot=document.createElement('tr');tot.className='tot';
+  tot.innerHTML=`<td><span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:600;color:var(--text2)">TOTAL (${rows.length} dates)</span></td>`+
+    STATUSES.map(st=>`<td class="tot-val">${rows.reduce((a,r)=>a+r.d[st].n,0).toLocaleString()}</td>`).join('')+
+    `<td class="tot-val">${tN.toLocaleString()}</td><td class="amt">${php(tNB)}</td>`+
+    `<td><div class="rcell"><span class="rval ${rc(tCR)}">${pct(tCR)}</span></div></td>`+
+    `<td><div class="rcell"><span class="rval ${rc(tAR)}">${pct(tAR)}</span></div></td>`;
+  tbody.appendChild(tot);
+}
+
+/* ════════════════════════════════════════════════
+   FPD TAB — DYNAMIC BUILD
+════════════════════════════════════════════════ */
+let FPD_ACCOUNTS_DYNAMIC = [];
+
+function buildFPDDynamic(collRows, firstDueMap, userCohortMap, dqMap) {
+  // Identify FPD users: first due date == delinquent date
+  const seenUids = new Set();
+  FPD_ACCOUNTS_DYNAMIC = [];
+  collRows.forEach(r => {
+    if (seenUids.has(r.uid)) return;
+    const fd = firstDueMap[r.uid];
+    if (!fd || fd !== r.date) return;
+    seenUids.add(r.uid);
+    const cm = userCohortMap[r.uid] || '';
+    const dq = dqMap[r.uid] || { status:'', latest_dq_start:'' };
+    let ls = 'Unknown';
+    if (dq.status==='Past Due') ls='Past Due';
+    else if (dq.status==='Current') ls = dq.latest_dq_start===r.date ? 'Resolved' : 'Current';
+    FPD_ACCOUNTS_DYNAMIC.push({
+      user_id:r.uid, full_name:r.nm, first_name:r.fnm, last_name:r.lnm, email:r.em,
+      cohort_month:cm, first_due_date:fd, delinquent_date:r.date,
+      delinquent_amount:r.amt, status:r.status, latest_status:ls, latest_dq_start:dq.latest_dq_start
+    });
+  });
+  FPD_ACCOUNTS_DYNAMIC.sort((a,b)=>a.cohort_month.localeCompare(b.cohort_month)||a.full_name.localeCompare(b.full_name));
+
+  // Build cohort summary from userCohortMap + FPD accounts
+  const cohortTotal = {}, cohortFPD = {};
+  Object.values(userCohortMap).forEach(m => { cohortTotal[m]=(cohortTotal[m]||0)+1; });
+  FPD_ACCOUNTS_DYNAMIC.forEach(a => { if(a.cohort_month) cohortFPD[a.cohort_month]=(cohortFPD[a.cohort_month]||0)+1; });
+  const FPD_DATA_DYN = Object.keys(cohortTotal).sort().map(m => ({
+    cohort:m, total:cohortTotal[m], fpd:cohortFPD[m]||0,
+    fpd_rate:+((cohortFPD[m]||0)/cohortTotal[m]*100).toFixed(2)
+  }));
+
+  // Store data but DON'T render yet — #tab-fpd is display:none so Chart.js
+  // will silently fail on a zero-dimension canvas. Render on first tab open.
+  window._fpdDataDyn    = FPD_DATA_DYN;
+  window._fpdAccountsDyn = FPD_ACCOUNTS_DYNAMIC;
+  fpdBuilt = false; // allow switchTab to trigger the first render
+}
+
+function renderFPD(fpdData, fpdAccounts) {
+  const totalAccts  = fpdData.reduce((a,r)=>a+r.total,0);
+  const totalFPD    = fpdData.reduce((a,r)=>a+r.fpd,0);
+  const overallRate = totalAccts>0?(totalFPD/totalAccts*100):0;
+  const peakRow     = fpdData.filter(r=>r.fpd>0).sort((a,b)=>b.fpd_rate-a.fpd_rate)[0]||{cohort:'—',fpd_rate:0,fpd:0,total:0};
+
+  document.getElementById('fpd-metrics').innerHTML=`
+    <div class="mc bl"><div class="mlbl">Total accounts</div><div class="mval">${totalAccts.toLocaleString()}</div><div class="msub">${fpdData.length} cohort months</div></div>
+    <div class="mc tl"><div class="mlbl">Total FPD accounts</div><div class="mval" style="color:var(--red)">${totalFPD}</div><div class="msub">first due = delinquent date</div></div>
+    <div class="mc gr"><div class="mlbl">Overall FPD rate</div><div class="mval" style="color:${overallRate>5?'var(--red)':overallRate>2?'var(--amber)':'var(--green)'}">${overallRate.toFixed(2)}%</div><div class="msub">FPD ${totalFPD} ÷ total ${totalAccts.toLocaleString()}</div></div>
+    <div class="mc am"><div class="mlbl">Peak cohort</div><div class="mval" style="font-size:15px;color:var(--red)">${peakRow.fpd_rate.toFixed(2)}%</div><div class="msub">${peakRow.cohort} · ${peakRow.fpd} of ${peakRow.total}</div></div>`;
+
+  if (fpdChart) { fpdChart.destroy(); fpdChart=null; }
+  const cd=fpdData.filter(r=>r.total>0);
+  fpdChart=new Chart(document.getElementById('fpdChart'),{type:'bar',
+    data:{labels:cd.map(r=>r.cohort),datasets:[{data:cd.map(r=>r.fpd_rate),borderRadius:4,borderSkipped:false,
+      backgroundColor:cd.map(r=>r.fpd_rate>4?'rgba(239,68,68,0.7)':r.fpd_rate>2?'rgba(245,158,11,0.7)':r.fpd_rate>0?'rgba(59,130,246,0.7)':'rgba(255,255,255,0.06)'),
+      borderColor:    cd.map(r=>r.fpd_rate>4?'#ef4444':r.fpd_rate>2?'#f59e0b':r.fpd_rate>0?'#3b82f6':'rgba(255,255,255,0.1)'),borderWidth:1}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>[`FPD rate: ${c.raw}%`,`FPD: ${cd[c.dataIndex].fpd} / ${cd[c.dataIndex].total}`]}}},
+      scales:{x:{ticks:{color:'#525d6e',font:{family:'DM Mono',size:9},maxRotation:45},grid:{display:false}},
+              y:{min:0,ticks:{color:'#525d6e',font:{family:'DM Mono',size:10},callback:v=>v+'%'},grid:{color:'rgba(255,255,255,0.05)'}}}}});
+
+  const tbody=document.getElementById('fpd-tbody'); tbody.innerHTML='';
+  const maxRate=Math.max(...fpdData.map(r=>r.fpd_rate),1);
+  const scByC={};
+  fpdAccounts.forEach(a=>{
+    if(!scByC[a.cohort_month]) scByC[a.cohort_month]={pd:0,res:0,cur:0};
+    if(a.latest_status==='Past Due') scByC[a.cohort_month].pd++;
+    else if(a.latest_status==='Resolved') scByC[a.cohort_month].res++;
+    else if(a.latest_status==='Current') scByC[a.cohort_month].cur++;
+  });
+
+  fpdData.forEach(r=>{
+    const bW=Math.min(r.fpd_rate/maxRate*100,100);
+    const rc2=r.fpd_rate>4?'var(--red)':r.fpd_rate>2?'var(--amber)':r.fpd_rate>0?'var(--blue)':'var(--text3)';
+    const sc=scByC[r.cohort]||{pd:0,res:0,cur:0};
+    const stCell=r.fpd>0?`<div style="display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap">
+      ${sc.pd>0?`<span class="ls ls-pd">▲ ${sc.pd} past due</span>`:''}
+      ${sc.res>0?`<span class="ls ls-res">✓ ${sc.res} resolved</span>`:''}
+      ${sc.cur>0?`<span class="ls ls-cur">~ ${sc.cur} current</span>`:''}
+    </div>`:'<span class="bn">—</span>';
+    const tr=document.createElement('tr');
+    tr.innerHTML=
+      `<td><span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:500">${r.cohort}</span></td>`+
+      `<td><span style="font-family:'DM Mono',monospace;font-size:12px">${r.total.toLocaleString()}</span></td>`+
+      `<td>${r.fpd>0?`<span class="badge bd">${r.fpd}</span>`:'<span class="bn">—</span>'}</td>`+
+      `<td><span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:500;color:${rc2}">${r.fpd_rate>0?r.fpd_rate.toFixed(2)+'%':'—'}</span></td>`+
+      `<td style="min-width:120px"><div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:4px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden"><div style="width:${bW}%;height:100%;background:${rc2};border-radius:2px"></div></div></div></td>`+
+      `<td>${stCell}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  const tPD=fpdAccounts.filter(a=>a.latest_status==='Past Due').length;
+  const tRe=fpdAccounts.filter(a=>a.latest_status==='Resolved').length;
+  const tCu=fpdAccounts.filter(a=>a.latest_status==='Current').length;
+  const tot=document.createElement('tr');tot.className='tot';
+  tot.innerHTML=
+    `<td><span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:600;color:var(--text2)">TOTAL</span></td>`+
+    `<td class="tot-val">${totalAccts.toLocaleString()}</td>`+
+    `<td><span class="badge bd">${totalFPD}</span></td>`+
+    `<td><span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:600;color:var(--amber)">${overallRate.toFixed(2)}%</span></td>`+
+    `<td></td>`+
+    `<td><div style="display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap">
+      ${tPD>0?`<span class="ls ls-pd">▲ ${tPD} past due</span>`:''}
+      ${tRe>0?`<span class="ls ls-res">✓ ${tRe} resolved</span>`:''}
+      ${tCu>0?`<span class="ls ls-cur">~ ${tCu} current</span>`:''}
+    </div></td>`;
+  tbody.appendChild(tot);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase().includes(name==='recovery'?'recovery':'first')));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+name));
+  // Render FPD chart AFTER the panel is visible (canvas now has real dimensions)
+  if (name === 'fpd' && !fpdBuilt) {
+    const data  = window._fpdDataDyn    || FPD_DATA;
+    const accts = window._fpdAccountsDyn || FPD_ACCOUNTS;
+    renderFPD(data, accts);
+    fpdBuilt = true;
+  }
+}
+
+/* ════════════════════════════════════════════════
+   DOWNLOADS
+════════════════════════════════════════════════ */
+function csvEsc(v){ const s=String(v??''); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; }
+function dl(content,name,mime){ const b=new Blob([content],{type:mime}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u); }
+
+function downloadFPDcsv() {
+  const accts = FPD_ACCOUNTS_DYNAMIC.length ? FPD_ACCOUNTS_DYNAMIC : FPD_ACCOUNTS;
+  const hdr = ['User ID','Full Name','First Name','Last Name','Email','Cohort Month','First Due Date','Delinquent Date','Delinquent Amount','Status','Latest Status'];
+  const rows = accts.map(r=>[r.user_id,r.full_name,r.first_name,r.last_name,r.email,r.cohort_month,r.first_due_date,r.delinquent_date,r.delinquent_amount,r.status,r.latest_status].map(csvEsc).join(','));
+  dl([hdr.join(','),...rows].join('\n'),'FPD_Accounts_'+new Date().toISOString().slice(0,10)+'.csv','text/csv;charset=utf-8;');
+}
+
+function downloadCohortCSV() {
+  const hdr=['Cohort Month','Total Accounts','FPD Count','FPD Rate (%)'];
+  const accts = FPD_ACCOUNTS_DYNAMIC.length ? FPD_ACCOUNTS_DYNAMIC : FPD_ACCOUNTS;
+  // Rebuild cohort summary from active accounts
+  const src = buf1 ? null : FPD_DATA; // use embedded if no files loaded
+  if (src) {
+    const rows=src.map(r=>[r.cohort,r.total,r.fpd,r.fpd_rate].map(csvEsc).join(','));
+    const gt=src.reduce((a,r)=>a+r.total,0),gf=src.reduce((a,r)=>a+r.fpd,0);
+    rows.push(['TOTAL',gt,gf,(gf/gt*100).toFixed(2)].map(csvEsc).join(','));
+    dl([hdr.join(','),...rows].join('\n'),'FPD_Cohort_Summary_'+new Date().toISOString().slice(0,10)+'.csv','text/csv;charset=utf-8;');
+  }
+}
+
+/* ════════════════════════════════════════════════
+   HELPERS
+════════════════════════════════════════════════ */
+function php(n){ return '₱'+Math.abs(n).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+function pct(n){ return isFinite(n)?n.toFixed(1)+'%':'—'; }
+function rc(v){ if(!isFinite(v)||v===null) return 'rn'; if(v>=75) return 'rh'; if(v>=40) return 'rm'; return 'rl'; }
+</script>
+</body>
+</html>
